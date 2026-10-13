@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>حل مشاكل دليل جوادة - الدعم الفني</title>
+    <!-- مكتبة PeerJS للربط المباشر -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #f4f7f6; margin: 0; padding: 20px; text-align: center; color: #333; }
+        .container { max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { color: #007bff; margin-bottom: 20px; }
+        .btn-option { background-color: #007bff; color: white; border: none; padding: 15px 30px; margin: 10px; font-size: 18px; border-radius: 8px; cursor: pointer; transition: 0.3s; }
+        .btn-option:hover { background-color: #0056b3; }
+        .btn-admin { background-color: #28a745; }
+        .btn-admin:hover { background-color: #1e7e34; }
+        .section { display: none; margin-top: 20px; }
+        .active { display: block; }
+        .code-box { font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #d9534f; background: #f8d7da; padding: 15px; border-radius: 8px; display: inline-block; margin: 15px 0; border: 1px dashed #dc3545; }
+        input[type="text"] { font-size: 20px; padding: 10px; width: 200px; text-align: center; border: 2px solid #ccc; border-radius: 6px; }
+        video { width: 100%; max-height: 500px; background-color: #000; border-radius: 8px; margin-top: 15px; }
+        .status { margin-top: 10px; font-weight: bold; color: #6c757d; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>مركز دعم ودليل جوادة</h1>
+
+    <!-- الشاشة الأولى: اختيار الصفة -->
+    <div id="selection-screen" class="section active">
+        <h3>مرحباً بك! يرجى تحديد نوع الدخول:</h3>
+        <button class="btn-option" onclick="selectRole('user')">صاحب مشكلة تريد حلها</button>
+        <button class="btn-option btn-admin" onclick="selectRole('admin')">مشرف الموقع</button>
+    </div>
+
+    <!-- شاشة المستخدم (صاحب المشكلة) -->
+    <div id="user-screen" class="section">
+        <h2>شاشة المستخدم</h2>
+        <p>قم بإرسال هذا الكود إلى المشرف ليتمكن من الاتصال بك ومساعدتك:</p>
+        <div id="user-code" class="code-box">جاري إنشائه...</div>
+        <br>
+        <button class="btn-option" onclick="startScreenShare()">1. ابدأ مشاركة الشاشة أولاً</button>
+        <p class="status" id="user-status">في انتظار مشاركة الشاشة...</p>
+    </div>
+
+    <!-- شاشة المشرف -->
+    <div id="admin-screen" class="section">
+        <h2>شاشة المشرف</h2>
+        <p>أدخل الكود الذي أرسله لك المستخدم لرؤية شاشته:</p>
+        <!-- تم إضافة منع تحديث الصفحة عند الضغط على Enter داخل الحقل -->
+        <input type="text" id="join-code" placeholder="أدخل الكود هنا" onkeydown="if(event.key === 'Enter'){ connectToUser(); event.preventDefault(); }">
+        <br><br>
+        <button class="btn-option btn-admin" onclick="connectToUser()">اتصال برقم المستخدم</button>
+        <p class="status" id="admin-status">في انتظار إدخال الكود...</p>
+        <video id="remote-video" autoplay playsinline controls></video>
+    </div>
+</div>
+
+<script>
+    let peer = null;
+    let localStream = null;
+
+    function selectRole(role) {
+        document.getElementById('selection-screen').classList.remove('active');
+        if (role === 'user') {
+            document.getElementById('user-screen').classList.add('active');
+            initUser();
+        } else if (role === 'admin') {
+            document.getElementById('admin-screen').classList.add('active');
+            initAdmin();
+        }
+    }
+
+    // تهيئة المستخدم وإعطائه كود عشوائي مكون من 6 أرقام
+    function initUser() {
+        const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
+        
+        // منع إعادة إنشاء الـ Peer لو اتفتح بالغلط تاني
+        if (peer) {
+            peer.destroy();
+        }
+
+        peer = new Peer('gwada-' + randomCode);
+
+        peer.on('open', function(id) {
+            document.getElementById('user-code').innerText = randomCode;
+            document.getElementById('user-status').innerText = "تم إنشاء الكود بنجاح. يرجى الضغط على 'بدء مشاركة الشاشة'.";
+        });
+
+        // الاستجابة عندما يتصل المشرف
+        peer.on('call', function(call) {
+            if (localStream) {
+                call.answer(localStream);
+                document.getElementById('user-status').innerText = "تم الاتصال بنجاح! المشرف يشاهد شاشتك الآن.";
+            } else {
+                alert("برجاء اضغط على زر 'ابدأ مشاركة الشاشة' أولاً!");
+            }
+        });
+
+        peer.on('error', function(err) {
+            console.error(err);
+        });
+    }
+
+    // مشاركة شاشة المستخدم
+    async function startScreenShare() {
+        try {
+            localStream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: false
+            });
+            document.getElementById('user-status').innerText = "الشاشة جاهزة للمشاركة! أرسل الكود للمشرف لينتظر دخولك.";
+        } catch (err) {
+            console.error("Error: " + err);
+            alert("تعذر مشاركة الشاشة. يرجى إعطاء الصلاحية للمتصفح.");
+        }
+    }
+
+    // تهيئة المشرف بشكل صحيح وثابت
+    function initAdmin() {
+        if (!peer || peer.disconnected) {
+            peer = new Peer();
+            peer.on('open', function(id) {
+                console.log("Admin Peer Initialized with ID: " + id);
+            });
+            peer.on('error', function(err) {
+                console.error(err);
+            });
+        }
+    }
+
+    // اتصال المشرف بالمستخدم
+    function connectToUser() {
+        const code = document.getElementById('join-code').value.trim();
+        if (!code) {
+            alert("يرجى إدخال الكود أولاً!");
+            return;
+        }
+
+        // التأكد من أن الـ Peer جاهز للمشرف قبل الاتصال
+        if (!peer || peer.destroyed) {
+            initAdmin();
+            setTimeout(executeCall, 500); // إعطاء مهلة صغيرة لبدء الاتصال
+        } else {
+            executeCall();
+        }
+    }
+
+    function executeCall() {
+        const code = document.getElementById('join-code').value.trim();
+        document.getElementById('admin-status').innerText = "جاري الاتصال بالمستخدم...";
+        const targetPeerId = 'gwada-' + code;
+
+        // الاتصال بالمستخدم لمشاهدة بث الشاشة
+        const call = peer.call(targetPeerId, null);
+
+        if (!call) {
+            alert("فشل في بدء المكالمة، تأكد من صحة الكود.");
+            return;
+        }
+
+        call.on('stream', function(remoteStream) {
+            document.getElementById('admin-status').innerText = "تم الاتصال! يتم عرض شاشة المستخدم الآن.";
+            const videoElement = document.getElementById('remote-video');
+            videoElement.srcObject = remoteStream;
+        });
+
+        call.on('error', function(err) {
+            console.error(err);
+            alert("تعذر الاتصال. تأكد من صحة الكود وأن المستخدم قام بمشاركة شاشته.");
+            document.getElementById('admin-status').innerText = "فشل الاتصال.";
+        });
+    }
+</script>
+
+</body>
+</html>
